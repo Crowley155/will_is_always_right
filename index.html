@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>External Flow Launcher</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <div id="flowContainer" style="width: 100%; min-height: 400px;"></div>
+    
+    <!-- Include Lightning Out from your Salesforce org -->
+    <script src="https://YOUR_SALESFORCE_DOMAIN.my.salesforce.com/lightning/lightning.out.js"></script>
+    
+    <script>
+        // Lightning Out Configuration
+        const SALESFORCE_CONFIG = {
+            orgDomain: 'YOUR_SALESFORCE_DOMAIN.my.salesforce.com', // Replace with your domain
+            appName: 'c:flowLauncherApp',
+            containerId: 'flowContainer',
+            token: 'YOUR_LIGHTNING_OUT_TOKEN' // Get this from Setup > Session Settings
+        };
+        
+        // Flow configuration
+        const FLOW_CONFIG = {
+            flowName: 'YOUR_FLOW_API_NAME', // Replace with your flow's API name
+            autoStart: true,
+            inputVariables: [
+                // Example input variables - customize as needed
+                // { name: 'recordId', value: 'someRecordId' },
+                // { name: 'accountName', value: 'Acme Corp' }
+            ]
+        };
+        
+        // Initialize Lightning Out
+        function initializeLightningOut() {
+            console.log('Initializing Lightning Out...');
+            
+            $Lightning.use(SALESFORCE_CONFIG.appName, function() {
+                console.log('Lightning Out app loaded successfully');
+                createFlowLauncherComponent();
+            }, SALESFORCE_CONFIG.orgDomain, SALESFORCE_CONFIG.token);
+        }
+        
+        // Create the flow launcher component
+        function createFlowLauncherComponent() {
+            $Lightning.createComponent(
+                "c:flowLauncher",
+                {
+                    flowName: FLOW_CONFIG.flowName,
+                    autoStart: FLOW_CONFIG.autoStart,
+                    flowInputVariables: FLOW_CONFIG.inputVariables
+                },
+                SALESFORCE_CONFIG.containerId,
+                function(component) {
+                    console.log('Flow Launcher component created successfully');
+                    setupEventListeners();
+                }
+            );
+        }
+        
+        // Set up event listeners for flow events
+        function setupEventListeners() {
+            // Listen for flow events via postMessage (sent by the component)
+            window.addEventListener('message', function(event) {
+                if (event.data && event.data.type === 'flowLauncherEvent') {
+                    handleFlowEvent(event.data);
+                }
+            });
+        }
+        
+        // Handle flow events
+        function handleFlowEvent(eventData) {
+            console.log('Flow Event Received:', eventData);
+            
+            switch(eventData.eventName) {
+                case 'flowStarted':
+                    console.log('Flow started:', eventData.flowName);
+                    onFlowStarted(eventData);
+                    break;
+                    
+                case 'flowFinished':
+                    console.log('Flow completed:', eventData.flowName);
+                    onFlowCompleted(eventData);
+                    break;
+                    
+                case 'flowError':
+                    console.error('Flow error:', eventData.flowName);
+                    onFlowError(eventData);
+                    break;
+                    
+                case 'flowPaused':
+                    console.log('Flow paused:', eventData.flowName);
+                    onFlowPaused(eventData);
+                    break;
+                    
+                case 'flowToast':
+                    showNotification(eventData.eventData);
+                    break;
+                    
+                default:
+                    console.log('Unknown flow event:', eventData.eventName);
+            }
+        }
+        
+        // Event handlers - customize these for your needs
+        function onFlowStarted(eventData) {
+            // Handle flow start
+            document.getElementById('flowContainer').style.border = '2px solid #4bca81';
+        }
+        
+        function onFlowCompleted(eventData) {
+            // Handle flow completion
+            document.getElementById('flowContainer').style.border = '2px solid #4bca81';
+            
+            // Access output variables if needed
+            if (eventData.eventData && eventData.eventData.outputVariables) {
+                console.log('Flow output variables:', eventData.eventData.outputVariables);
+                // Process output variables as needed
+            }
+            
+            // Optional: Redirect or perform other actions
+            // window.location.href = '/success-page';
+        }
+        
+        function onFlowError(eventData) {
+            // Handle flow errors
+            document.getElementById('flowContainer').style.border = '2px solid #c23934';
+            showNotification({
+                title: 'Flow Error',
+                message: 'The flow encountered an error. Please try again.',
+                type: 'error'
+            });
+        }
+        
+        function onFlowPaused(eventData) {
+            // Handle flow pause
+            document.getElementById('flowContainer').style.border = '2px solid #ffb75d';
+        }
+        
+        // Simple notification function
+        function showNotification(notification) {
+            // Implement your preferred notification system
+            // This is a simple console/alert example
+            const message = `${notification.title}: ${notification.message}`;
+            
+            if (notification.type === 'error') {
+                console.error(message);
+                // Optionally show browser notification or custom modal
+            } else {
+                console.log(message);
+            }
+        }
+        
+        // Public API for external control
+        window.FlowLauncher = {
+            // Method to launch a different flow
+            launchFlow: function(flowName, inputVariables = []) {
+                FLOW_CONFIG.flowName = flowName;
+                FLOW_CONFIG.inputVariables = inputVariables;
+                
+                // Recreate component with new flow
+                document.getElementById(SALESFORCE_CONFIG.containerId).innerHTML = '';
+                createFlowLauncherComponent();
+            },
+            
+            // Method to update input variables
+            setInputVariables: function(inputVariables) {
+                FLOW_CONFIG.inputVariables = inputVariables;
+            }
+        };
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if Lightning Out is available
+            if (typeof $Lightning !== 'undefined') {
+                initializeLightningOut();
+            } else {
+                console.error('Lightning Out library not loaded. Check your Salesforce domain and script src.');
+            }
+        });
+    </script>
+</body>
+</html>
