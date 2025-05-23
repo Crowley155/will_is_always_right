@@ -6,43 +6,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
-    <div id="flowContainer" style="width: 100%; min-height: 400px;"></div>
+    <div id="flowContainer" style="width: 100%; min-height: 400px; border: 1px solid #ccc; padding: 20px;"></div>
+    <div id="debugLog" style="margin-top: 20px; padding: 10px; background: #f5f5f5; border: 1px solid #ddd;"></div>
     
     <!-- Include Lightning Out from your Salesforce org -->
     <script src="https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/lightning/lightning.out.js"></script>
     
     <script>
+        // Debug logging function
+        function debugLog(message) {
+            console.log(message);
+            const debugDiv = document.getElementById('debugLog');
+            debugDiv.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+        
         // Lightning Out Configuration
         const SALESFORCE_CONFIG = {
             orgDomain: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com',
             appName: 'c:flowLauncherApp',
-            containerId: 'flowContainer',
-            token: 'YOUR_LIGHTNING_OUT_TOKEN' // Get this from Setup > Session Settings > Lightning Out Security
+            containerId: 'flowContainer'
+            // Note: Token may not be required for public access
         };
         
         // Flow configuration
         const FLOW_CONFIG = {
             flowName: 'Sales_Order_Acquisition_Guided_Workflow',
             autoStart: true,
-            inputVariables: [
-                // Example input variables - customize as needed
-                // { name: 'recordId', value: 'someRecordId' },
-                // { name: 'accountName', value: 'Acme Corp' }
-            ]
+            inputVariables: []
         };
         
         // Initialize Lightning Out
         function initializeLightningOut() {
-            console.log('Initializing Lightning Out...');
+            debugLog('Initializing Lightning Out...');
             
+            // Try without token first (for public access)
             $Lightning.use(SALESFORCE_CONFIG.appName, function() {
-                console.log('Lightning Out app loaded successfully');
+                debugLog('Lightning Out app loaded successfully');
                 createFlowLauncherComponent();
-            }, SALESFORCE_CONFIG.orgDomain, SALESFORCE_CONFIG.token);
+            }, SALESFORCE_CONFIG.orgDomain);
         }
         
         // Create the flow launcher component
         function createFlowLauncherComponent() {
+            debugLog('Creating flow launcher component...');
+            
             $Lightning.createComponent(
                 "c:flowLauncher",
                 {
@@ -52,7 +59,7 @@
                 },
                 SALESFORCE_CONFIG.containerId,
                 function(component) {
-                    console.log('Flow Launcher component created successfully');
+                    debugLog('Flow Launcher component created successfully');
                     setupEventListeners();
                 }
             );
@@ -70,26 +77,26 @@
         
         // Handle flow events
         function handleFlowEvent(eventData) {
-            console.log('Flow Event Received:', eventData);
+            debugLog('Flow Event Received: ' + eventData.eventName);
             
             switch(eventData.eventName) {
                 case 'flowStarted':
-                    console.log('Flow started:', eventData.flowName);
+                    debugLog('Flow started: ' + eventData.flowName);
                     onFlowStarted(eventData);
                     break;
                     
                 case 'flowFinished':
-                    console.log('Flow completed:', eventData.flowName);
+                    debugLog('Flow completed: ' + eventData.flowName);
                     onFlowCompleted(eventData);
                     break;
                     
                 case 'flowError':
-                    console.error('Flow error:', eventData.flowName);
+                    debugLog('Flow error: ' + eventData.flowName);
                     onFlowError(eventData);
                     break;
                     
                 case 'flowPaused':
-                    console.log('Flow paused:', eventData.flowName);
+                    debugLog('Flow paused: ' + eventData.flowName);
                     onFlowPaused(eventData);
                     break;
                     
@@ -98,32 +105,24 @@
                     break;
                     
                 default:
-                    console.log('Unknown flow event:', eventData.eventName);
+                    debugLog('Unknown flow event: ' + eventData.eventName);
             }
         }
         
         // Event handlers - customize these for your needs
         function onFlowStarted(eventData) {
-            // Handle flow start
             document.getElementById('flowContainer').style.border = '2px solid #4bca81';
         }
         
         function onFlowCompleted(eventData) {
-            // Handle flow completion
             document.getElementById('flowContainer').style.border = '2px solid #4bca81';
             
-            // Access output variables if needed
             if (eventData.eventData && eventData.eventData.outputVariables) {
-                console.log('Flow output variables:', eventData.eventData.outputVariables);
-                // Process output variables as needed
+                debugLog('Flow output variables: ' + JSON.stringify(eventData.eventData.outputVariables));
             }
-            
-            // Optional: Redirect or perform other actions
-            // window.location.href = '/success-page';
         }
         
         function onFlowError(eventData) {
-            // Handle flow errors
             document.getElementById('flowContainer').style.border = '2px solid #c23934';
             showNotification({
                 title: 'Flow Error',
@@ -133,37 +132,29 @@
         }
         
         function onFlowPaused(eventData) {
-            // Handle flow pause
             document.getElementById('flowContainer').style.border = '2px solid #ffb75d';
         }
         
         // Simple notification function
         function showNotification(notification) {
-            // Implement your preferred notification system
-            // This is a simple console/alert example
             const message = `${notification.title}: ${notification.message}`;
+            debugLog(message);
             
             if (notification.type === 'error') {
                 console.error(message);
-                // Optionally show browser notification or custom modal
-            } else {
-                console.log(message);
             }
         }
         
         // Public API for external control
         window.FlowLauncher = {
-            // Method to launch a different flow
             launchFlow: function(flowName, inputVariables = []) {
                 FLOW_CONFIG.flowName = flowName;
                 FLOW_CONFIG.inputVariables = inputVariables;
                 
-                // Recreate component with new flow
                 document.getElementById(SALESFORCE_CONFIG.containerId).innerHTML = '';
                 createFlowLauncherComponent();
             },
             
-            // Method to update input variables
             setInputVariables: function(inputVariables) {
                 FLOW_CONFIG.inputVariables = inputVariables;
             }
@@ -171,12 +162,19 @@
         
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            // Check if Lightning Out is available
+            debugLog('Page loaded, checking for Lightning Out...');
+            
             if (typeof $Lightning !== 'undefined') {
+                debugLog('Lightning Out library found');
                 initializeLightningOut();
             } else {
-                console.error('Lightning Out library not loaded. Check your Salesforce domain and script src.');
+                debugLog('ERROR: Lightning Out library not loaded');
             }
+        });
+        
+        // Error handling for Lightning Out failures
+        window.addEventListener('error', function(e) {
+            debugLog('JavaScript Error: ' + e.message);
         });
     </script>
 </body>
