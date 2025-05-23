@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Salesforce Flow Launcher</title>
+    <title>Salesforce Flow Launcher - Direct Auth</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -41,17 +41,32 @@
             background: #ffe8e8; 
             border: 1px solid #dc3545; 
         }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Salesforce Flow Launcher</h1>
+        <h1>Salesforce Flow Launcher - Direct Authentication</h1>
         
         <!-- Flow Section -->
         <div id="flowSection">
             <h2>Sales Order Acquisition Workflow</h2>
             <div id="flowContainer" class="flow-container">
-                <div id="flowStatus" class="status info">Authenticating...</div>
+                <div id="flowStatus" class="status info">
+                    <span class="loading"></span> Authenticating with Salesforce...
+                </div>
             </div>
         </div>
     </div>
@@ -59,124 +74,133 @@
     <script>
         // Configuration
         const CONFIG = {
-            authEndpoint: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/apexrest/ExternalFlowAuth',
-            instanceUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com'
+            clientId: '3MVG9fdJGowvdgN3cVEc2VfzZPUcpVNgO4rmsXGujU25k4uFLOtXlPUm0ETdo_vaUWw_GK7U6DsTtPCcZk_0X',
+            username: 'flow@clearcaptions.com.willdev',
+            password: 'flow@clearcaptions.com.willdevJnNgqtNDPfWKvsw9E6UG32dbO',
+            loginUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/oauth2/token',
+            instanceUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com',
+            flowName: 'Sales_Order_Acquisition_Guided_Workflow',
+            apiVersion: 'v60.0'
         };
         
         let accessToken = null;
-        let sessionId = null;
+        let instanceUrl = null;
         
         // Update status
-        function updateFlowStatus(message, type = 'info') {
+        function updateFlowStatus(message, type = 'info', showLoading = false) {
             const statusEl = document.getElementById('flowStatus');
-            statusEl.innerHTML = message;
+            const loadingSpinner = showLoading ? '<span class="loading"></span> ' : '';
+            statusEl.innerHTML = loadingSpinner + message;
             statusEl.className = `status ${type}`;
             console.log(`[FLOW] ${message}`);
         }
         
-        // Authenticate using proxy endpoint
-        async function authenticateViaProxy() {
+        // Direct OAuth authentication
+        async function authenticateDirectly() {
             try {
-                updateFlowStatus('Authenticating via Salesforce proxy...', 'info');
+                updateFlowStatus('Authenticating with Salesforce...', 'info', true);
                 
-                const response = await fetch(CONFIG.authEndpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                const authBody = new URLSearchParams({
+                    grant_type: 'password',
+                    client_id: CONFIG.clientId,
+                    username: CONFIG.username,
+                    password: CONFIG.password
                 });
                 
-                const data = await response.json();
-                console.log('Auth Response:', data);
+                const response = await fetch(CONFIG.loginUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: authBody
+                });
                 
-                if (data.success && data.accessToken) {
-                    accessToken = data.accessToken;
-                    sessionId = data.accessToken;
+                if (!response.ok) {
+                    const errorData = await response.text();
+                    throw new Error(`Authentication failed: ${response.status} - ${errorData}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.access_token) {
+                    accessToken = data.access_token;
+                    instanceUrl = data.instance_url || CONFIG.instanceUrl;
                     
-                    updateFlowStatus('✅ Authentication successful!', 'success');
-                    await initializeLightningOut();
+                    updateFlowStatus('✅ Authentication successful! Launching flow...', 'success', true);
+                    await launchFlow();
                     
                 } else {
-                    throw new Error(data.message || 'Authentication failed');
+                    throw new Error('No access token received');
                 }
                 
             } catch (error) {
-                updateFlowStatus(`Authentication failed: ${error.message}`, 'error');
+                updateFlowStatus(`❌ Authentication failed: ${error.message}`, 'error');
                 console.error('Auth Error:', error);
             }
         }
         
-        // Initialize Lightning Out
-        async function initializeLightningOut() {
+        // Launch flow using REST API
+        async function launchFlow() {
             try {
-                updateFlowStatus('Loading Lightning platform...', 'info');
+                updateFlowStatus('Starting flow execution...', 'info', true);
                 
-                // Load Lightning Out script
-                const lightningScript = document.createElement('script');
-                lightningScript.src = `${CONFIG.instanceUrl}/lightning/lightning.out.js`;
+                const flowEndpoint = `${instanceUrl}/services/data/${CONFIG.apiVersion}/actions/custom/flow/${CONFIG.flowName}`;
                 
-                lightningScript.onload = function() {
-                    updateFlowStatus('Lightning Out loaded, creating flow...', 'info');
-                    
-                    // Initialize Lightning Out with session
-                    $Lightning.use("c:flowLauncherApp", function() {
-                        createFlowComponent();
-                    }, CONFIG.instanceUrl, sessionId);
+                const flowBody = {
+                    inputs: [{}] // Empty inputs for this flow
                 };
                 
-                lightningScript.onerror = function() {
-                    updateFlowStatus('Failed to load Lightning Out', 'error');
-                };
-                
-                document.head.appendChild(lightningScript);
-                
-            } catch (error) {
-                updateFlowStatus(`Lightning Out error: ${error.message}`, 'error');
-            }
-        }
-        
-        // Create the flow component
-        function createFlowComponent() {
-            try {
-                updateFlowStatus('Starting flow...', 'info');
-                
-                $Lightning.createComponent(
-                    "c:flowLauncher",
-                    {
-                        flowName: "Sales_Order_Acquisition_Guided_Workflow",
-                        autoStart: true,
-                        flowInputVariables: []
+                const response = await fetch(flowEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
                     },
-                    "flowContainer",
-                    function(component) {
-                        updateFlowStatus('✅ Flow launched successfully!', 'success');
-                        
-                        // Hide status after a few seconds
-                        setTimeout(() => {
-                            const statusEl = document.getElementById('flowStatus');
-                            if (statusEl) {
-                                statusEl.style.display = 'none';
-                            }
-                        }, 3000);
-                    }
-                );
+                    body: JSON.stringify(flowBody)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.text();
+                    throw new Error(`Flow execution failed: ${response.status} - ${errorData}`);
+                }
+                
+                const result = await response.json();
+                console.log('Flow Result:', result);
+                
+                updateFlowStatus('✅ Flow completed successfully!', 'success');
+                
+                // Display results
+                if (result && result.length > 0) {
+                    const flowResult = result[0];
+                    const resultHtml = `
+                        <div style="margin-top: 20px;">
+                            <h3>Flow Execution Results:</h3>
+                            <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
+                                ${JSON.stringify(flowResult, null, 2)}
+                            </pre>
+                        </div>
+                    `;
+                    
+                    document.getElementById('flowContainer').innerHTML = 
+                        document.getElementById('flowContainer').innerHTML + resultHtml;
+                }
                 
             } catch (error) {
-                updateFlowStatus(`Flow creation error: ${error.message}`, 'error');
+                updateFlowStatus(`❌ Flow execution failed: ${error.message}`, 'error');
                 console.error('Flow Error:', error);
             }
         }
         
-        // Start everything when page loads
+        // Start authentication when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('🚀 Starting Flow Launcher');
-            authenticateViaProxy();
+            console.log('🚀 Starting Direct Flow Launcher');
+            authenticateDirectly();
         });
         
-        // Error handling
+        // Global error handling
         window.addEventListener('error', function(e) {
             console.error('Global error:', e.error);
-            updateFlowStatus(`Error: ${e.message}`, 'error');
+            updateFlowStatus(`❌ Error: ${e.message}`, 'error');
         });
     </script>
 </body>
