@@ -82,21 +82,19 @@
         </div>
     </div>
     
-    <!-- Salesforce Lightning Out -->
-    <script src="https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/lightning/lightning.out.js"></script>
-    
     <script>
-        // OAuth 2.0 with PKCE Configuration (Secure - No Client Secret Required)
+        // OAuth 2.0 with PKCE Configuration
         const OAUTH_CONFIG = {
             clientId: '3MVG9fdJGowvdgN3cVEc2VfzZPUcpVNgO4rmsXGujU25k4uFLOtXlPUm0ETdo_vaUWw_GK7U6DsTtPCcZk_0X',
             authUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/oauth2/authorize',
             tokenUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/oauth2/token',
             redirectUri: window.location.origin + window.location.pathname,
-            scope: 'api refresh_token'
+            scope: 'api refresh_token full'  // Added 'full' scope for broader permissions
         };
         
         let accessToken = null;
         let instanceUrl = null;
+        let sessionId = null;
         
         // Utility functions
         function updateAuthStatus(message, type = 'info') {
@@ -113,7 +111,7 @@
             console.log(`[FLOW] ${message}`);
         }
         
-        // PKCE Helper Functions (Proof Key for Code Exchange)
+        // PKCE Helper Functions
         function generateCodeVerifier() {
             const array = new Uint32Array(56/2);
             window.crypto.getRandomValues(array);
@@ -135,14 +133,11 @@
             try {
                 updateAuthStatus('Preparing secure authentication...', 'info');
                 
-                // Generate PKCE parameters
                 const codeVerifier = generateCodeVerifier();
                 const codeChallenge = await generateCodeChallenge(codeVerifier);
                 
-                // Store code verifier for later use
                 sessionStorage.setItem('code_verifier', codeVerifier);
                 
-                // Build authorization URL with PKCE
                 const authParams = new URLSearchParams({
                     response_type: 'code',
                     client_id: OAUTH_CONFIG.clientId,
@@ -153,7 +148,6 @@
                 });
                 
                 const authUrl = `${OAUTH_CONFIG.authUrl}?${authParams.toString()}`;
-                
                 updateAuthStatus('Redirecting to Salesforce...', 'info');
                 window.location.href = authUrl;
                 
@@ -174,7 +168,7 @@
             }
             
             if (!code) {
-                return false; // No OAuth callback
+                return false;
             }
             
             try {
@@ -185,7 +179,6 @@
                     throw new Error('Code verifier not found. Please try authenticating again.');
                 }
                 
-                // Exchange code for token using PKCE
                 const tokenParams = new URLSearchParams({
                     grant_type: 'authorization_code',
                     client_id: OAUTH_CONFIG.clientId,
@@ -207,16 +200,15 @@
                 if (data.access_token) {
                     accessToken = data.access_token;
                     instanceUrl = data.instance_url;
+                    sessionId = data.access_token; // Use access token as session ID
                     
-                    // Clean up
                     sessionStorage.removeItem('code_verifier');
-                    
-                    // Remove OAuth params from URL
                     window.history.replaceState({}, document.title, window.location.pathname);
                     
                     updateAuthStatus('✅ Successfully authenticated!', 'success');
-                    showFlowSection();
-                    await initializeLightningOut();
+                    
+                    // Get user info to verify permissions
+                    await getUserInfo();
                     
                 } else {
                     throw new Error(data.error_description || 'Token exchange failed');
@@ -230,13 +222,36 @@
             return true;
         }
         
+        // Get user information and verify permissions
+        async function getUserInfo() {
+            try {
+                updateAuthStatus('Verifying user permissions...', 'info');
+                
+                const response = await fetch(`${instanceUrl}/services/oauth2/userinfo`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                const userInfo = await response.json();
+                console.log('User Info:', userInfo);
+                
+                updateAuthStatus(`✅ Authenticated as: ${userInfo.name}`, 'success');
+                showFlowSection();
+                await initializeLightningOut();
+                
+            } catch (error) {
+                updateAuthStatus(`User info retrieval failed: ${error.message}`, 'error');
+            }
+        }
+        
         // Show flow section
         function showFlowSection() {
             document.getElementById('authSection').style.display = 'none';
             document.getElementById('flowSection').style.display = 'block';
         }
         
-        // Initialize Lightning Out
+        // Initialize Lightning Out with proper session
         async function initializeLightningOut() {
             try {
                 updateFlowStatus('Initializing Lightning platform...', 'info');
@@ -245,18 +260,34 @@
                     throw new Error('Missing authentication credentials');
                 }
                 
-                // Initialize Lightning Out
-                $Lightning.use("lightning:outApp", function() {
-                    updateFlowStatus('Lightning platform loaded successfully!', 'success');
-                    createFlowComponent();
-                }, instanceUrl, accessToken);
+                // Load Lightning Out script dynamically with proper instance
+                const lightningScript = document.createElement('script');
+                lightningScript.src = `${instanceUrl}/lightning/lightning.out.js`;
+                
+                lightningScript.onload = function() {
+                    // Initialize Lightning Out with session ID
+                    $Lightning.use("c:flowLauncherApp", function() {
+                        updateFlowStatus('Lightning platform loaded successfully!', 'success');
+                        createFlowComponent();
+                    }, instanceUrl, sessionId);
+                };
+                
+                lightningScript.onerror = function() {
+                    // Fallback to direct component creation
+                    updateFlowStatus('Trying alternative Lightning initialization...', 'info');
+                    createFlowComponentDirect();
+                };
+                
+                document.head.appendChild(lightningScript);
                 
             } catch (error) {
                 updateFlowStatus(`Lightning initialization failed: ${error.message}`, 'error');
+                // Try direct approach
+                createFlowComponentDirect();
             }
         }
         
-        // Create the flow component
+        // Create flow component via Lightning Out
         function createFlowComponent() {
             try {
                 updateFlowStatus('Loading Sales Order Acquisition Workflow...', 'info');
@@ -272,7 +303,6 @@
                     function(component) {
                         updateFlowStatus('✅ Flow loaded successfully!', 'success');
                         
-                        // Hide status after successful load
                         setTimeout(() => {
                             document.getElementById('flowStatus').style.display = 'none';
                         }, 2000);
@@ -281,6 +311,115 @@
                 
             } catch (error) {
                 updateFlowStatus(`Flow creation failed: ${error.message}`, 'error');
+                // Try direct REST API approach
+                createFlowComponentDirect();
+            }
+        }
+        
+        // Direct REST API approach as fallback
+        async function createFlowComponentDirect() {
+            try {
+                updateFlowStatus('Using direct flow execution...', 'info');
+                
+                // Call the flow directly via REST API
+                const flowResponse = await fetch(`${instanceUrl}/services/data/v58.0/actions/custom/flow/Sales_Order_Acquisition_Guided_Workflow`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        inputs: [{}]
+                    })
+                });
+                
+                if (flowResponse.ok) {
+                    const flowResult = await flowResponse.json();
+                    updateFlowStatus('✅ Flow executed successfully!', 'success');
+                    console.log('Flow Result:', flowResult);
+                    
+                    // Display flow results
+                    document.getElementById('flowContainer').innerHTML = `
+                        <div class="status success">
+                            <h3>Flow Completed Successfully!</h3>
+                            <pre>${JSON.stringify(flowResult, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(`Flow execution failed: ${flowResponse.status} ${flowResponse.statusText}`);
+                }
+                
+            } catch (error) {
+                updateFlowStatus(`Direct flow execution failed: ${error.message}`, 'error');
+                
+                // Show manual form as ultimate fallback
+                showManualForm();
+            }
+        }
+        
+        // Manual form fallback
+        function showManualForm() {
+            updateFlowStatus('Loading manual form interface...', 'info');
+            
+            document.getElementById('flowContainer').innerHTML = `
+                <div class="status info">
+                    <h3>Manual Flow Interface</h3>
+                    <p>Complete the form below to submit your request:</p>
+                </div>
+                <form id="manualFlowForm" onsubmit="submitManualForm(event)">
+                    <div style="margin-bottom: 15px;">
+                        <label for="firstName">First Name:</label><br>
+                        <input type="text" id="firstName" name="firstName" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="lastName">Last Name:</label><br>
+                        <input type="text" id="lastName" name="lastName" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="email">Email:</label><br>
+                        <input type="email" id="email" name="email" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="phone">Phone:</label><br>
+                        <input type="tel" id="phone" name="phone" required style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <button type="submit" class="btn">Submit Request</button>
+                </form>
+            `;
+        }
+        
+        // Submit manual form
+        async function submitManualForm(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            try {
+                updateFlowStatus('Submitting form data...', 'info');
+                
+                // Submit to custom REST endpoint or existing endpoint
+                const response = await fetch(`${instanceUrl}/services/apexrest/SendProspect`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                        'token': 'DEV-EB8149C4-957D-43E9-88D3-7A2C83249F39',
+                        'FirstName': data.firstName,
+                        'LastName': data.lastName,
+                        'Email': data.email,
+                        'Phone': data.phone
+                    }
+                });
+                
+                if (response.ok) {
+                    updateFlowStatus('✅ Form submitted successfully!', 'success');
+                } else {
+                    throw new Error(`Submission failed: ${response.status}`);
+                }
+                
+            } catch (error) {
+                updateFlowStatus(`Form submission failed: ${error.message}`, 'error');
             }
         }
         
@@ -288,7 +427,6 @@
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('🚀 Flow Launcher initialized');
             
-            // Check if this is an OAuth callback
             const isCallback = await handleOAuthCallback();
             
             if (!isCallback) {
@@ -302,9 +440,7 @@
             updateFlowStatus(`Application error: ${e.message}`, 'error');
         });
         
-        // Handle unload to clean up
         window.addEventListener('beforeunload', function() {
-            // Clean up any sensitive data
             sessionStorage.removeItem('code_verifier');
         });
     </script>
