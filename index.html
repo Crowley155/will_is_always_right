@@ -1,17 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Working Salesforce Flow Launcher</title>
+    <title>Lightning Out Flow Launcher</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { 
-            font-family: Arial, sans-serif; 
-            margin: 20px; 
-            background-color: #f4f6f9; 
+            font-family: 'Salesforce Sans', Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px;
+            background-color: #f3f2f2;
         }
         .container { 
-            max-width: 800px; 
+            max-width: 1200px; 
             margin: 0 auto; 
             background: white; 
             padding: 30px; 
@@ -21,221 +22,204 @@
         .status { 
             margin: 15px 0; 
             padding: 15px; 
-            border-radius: 6px; 
+            border-radius: 4px; 
             font-weight: bold;
         }
         .status.info { 
             background: #e8f3ff; 
-            border: 2px solid #0070d2; 
+            border-left: 4px solid #0070d2; 
             color: #014486;
         }
         .status.success { 
             background: #e8f7e8; 
-            border: 2px solid #28a745; 
+            border-left: 4px solid #28a745; 
             color: #155724;
         }
         .status.error { 
             background: #ffe8e8; 
-            border: 2px solid #dc3545; 
+            border-left: 4px solid #c23934; 
             color: #721c24;
         }
+        #flowContainer {
+            min-height: 600px;
+            border: 1px solid #dddbda;
+            border-radius: 4px;
+            padding: 20px;
+            background: #fafaf9;
+        }
         .loading {
+            text-align: center;
+            padding: 40px;
+            color: #706e6b;
+        }
+        .spinner {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #dddbda;
+            border-top: 4px solid #0070d2;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-right: 10px;
+            margin: 20px;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-        }
-        button {
-            background: #0070d2; 
-            color: white; 
-            border: none; 
-            padding: 15px 30px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-size: 16px;
-            font-weight: bold;
-            margin: 10px 5px;
-            transition: background 0.2s;
-        }
-        button:hover:not(:disabled) {
-            background: #005fb2;
-        }
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .results {
-            margin-top: 20px; 
-            padding: 20px; 
-            background: #f8f9fa; 
-            border-radius: 6px; 
-            border: 1px solid #ddd;
-        }
-        pre {
-            background: white; 
-            padding: 15px; 
-            border-radius: 4px; 
-            overflow-x: auto; 
-            white-space: pre-wrap;
-            border: 1px solid #eee;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚀 Salesforce Flow Launcher</h1>
-        <p><strong>This page authenticates and launches your Salesforce flow directly.</strong></p>
         
         <div id="status" class="status info">
-            Ready to launch flow. Click the button below.
+            Initializing Lightning Out...
         </div>
         
-        <button id="launchBtn" onclick="launchFlow()">Launch Flow Now</button>
-        
-        <div id="results"></div>
+        <div id="flowContainer">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Loading Flow Component...</div>
+            </div>
+        </div>
     </div>
-    
+
     <script>
         // Configuration
         const CONFIG = {
-            clientId: '3MVG9fdJGowvdgN3cVEc2VfzZPUcpVNgO4rmsXGujU25k4uFLOtXlPUm0ETdo_vaUWw_GK7U6DsTtPCcZk_0X',
-            username: 'flow@clearcaptions.com.willdev',
-            password: 'hFkO4qcWyWM%FgtOJnNgqtNDPfWKvsw9E6UG32dbO',
-            loginUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/oauth2/token',
             instanceUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com',
-            flowName: 'Sales_Order_Acquisition_Guided_Workflow',
-            apiVersion: 'v60.0',
-            corsProxy: 'https://cors-anywhere.herokuapp.com/'
+            authEndpoint: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/apexrest/ExternalFlowAuth',
+            flowName: 'Sales_Order_Acquisition_Guided_Workflow'
         };
-        
-        let accessToken = null;
-        let instanceUrl = null;
-        
+
+        let sessionId = null;
+
         // Update status
-        function updateStatus(message, type = 'info', showLoading = false) {
+        function updateStatus(message, type = 'info') {
             const statusEl = document.getElementById('status');
-            const loadingSpinner = showLoading ? '<span class="loading"></span>' : '';
-            statusEl.innerHTML = loadingSpinner + message;
+            statusEl.innerHTML = message;
             statusEl.className = `status ${type}`;
-            console.log(`[FLOW] ${message}`);
+            console.log(`[LIGHTNING OUT] ${message}`);
         }
-        
-        // Launch the complete flow process
-        async function launchFlow() {
-            const btn = document.getElementById('launchBtn');
-            btn.disabled = true;
-            btn.innerText = 'Launching...';
-            
+
+        // Get session ID from Apex endpoint
+        async function getSessionId() {
             try {
-                // Step 1: Authenticate
-                updateStatus('Step 1: Authenticating with Salesforce...', 'info', true);
-                await authenticate();
+                updateStatus('Getting authentication token...', 'info');
                 
-                // Step 2: Launch Flow
-                updateStatus('Step 2: Launching flow...', 'info', true);
-                await executeFlow();
+                const response = await fetch(CONFIG.authEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
                 
-                updateStatus('🎉 Flow completed successfully!', 'success');
+                if (data.success && data.accessToken) {
+                    sessionId = data.accessToken;
+                    updateStatus('✅ Authentication successful! Loading Lightning Out...', 'success');
+                    return data.accessToken;
+                } else {
+                    throw new Error(data.message || 'Authentication failed');
+                }
                 
             } catch (error) {
-                updateStatus(`❌ Error: ${error.message}`, 'error');
-                console.error('Error:', error);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = 'Launch Flow Again';
+                throw new Error(`Authentication failed: ${error.message}`);
             }
         }
-        
-        // Authenticate with Salesforce using CORS proxy
-        async function authenticate() {
-            const authBody = new URLSearchParams({
-                grant_type: 'password',
-                client_id: CONFIG.clientId,
-                username: CONFIG.username,
-                password: CONFIG.password
-            });
+
+        // Initialize Lightning Out
+        function initializeLightningOut(sessionId) {
+            updateStatus('Loading Lightning Out framework...', 'info');
             
-            const response = await fetch(CONFIG.corsProxy + CONFIG.loginUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: authBody
-            });
+            // Load Lightning Out script
+            const lightningScript = document.createElement('script');
+            lightningScript.src = `${CONFIG.instanceUrl}/lightning/lightning.out.js`;
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Authentication failed: ${response.status} - ${errorText}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.access_token) {
-                accessToken = data.access_token;
-                instanceUrl = data.instance_url || CONFIG.instanceUrl;
-                console.log('Authentication successful');
-            } else {
-                throw new Error('No access token received');
-            }
-        }
-        
-        // Execute the flow
-        async function executeFlow() {
-            const flowEndpoint = `${instanceUrl}/services/data/${CONFIG.apiVersion}/actions/custom/flow/${CONFIG.flowName}`;
-            
-            const flowBody = {
-                inputs: [{}]
+            lightningScript.onload = function() {
+                updateStatus('Lightning Out loaded. Initializing app...', 'info');
+                
+                // Initialize Lightning Out with session
+                $Lightning.use("c:flowLauncherApp", function() {
+                    updateStatus('Creating flow component...', 'info');
+                    createFlowComponent();
+                }, CONFIG.instanceUrl, sessionId);
             };
             
-            const response = await fetch(CONFIG.corsProxy + flowEndpoint, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify(flowBody)
-            });
+            lightningScript.onerror = function() {
+                updateStatus('❌ Failed to load Lightning Out script', 'error');
+            };
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Flow execution failed: ${response.status} - ${errorText}`);
+            document.head.appendChild(lightningScript);
+        }
+
+        // Create the flow launcher component
+        function createFlowComponent() {
+            try {
+                $Lightning.createComponent(
+                    "c:flowLauncher",
+                    {
+                        flowName: CONFIG.flowName,
+                        autoStart: true,
+                        flowInputVariables: []
+                    },
+                    "flowContainer",
+                    function(component) {
+                        updateStatus('✅ Flow component loaded successfully!', 'success');
+                        
+                        // Hide status after successful load
+                        setTimeout(() => {
+                            const statusEl = document.getElementById('status');
+                            if (statusEl) {
+                                statusEl.style.display = 'none';
+                            }
+                        }, 3000);
+                    }
+                );
+            } catch (error) {
+                updateStatus(`❌ Error creating component: ${error.message}`, 'error');
+                console.error('Component creation error:', error);
             }
-            
-            const result = await response.json();
-            console.log('Flow Result:', result);
-            
-            // Display results
-            displayResults(result);
         }
-        
-        // Display the flow results
-        function displayResults(result) {
-            const resultsEl = document.getElementById('results');
-            resultsEl.innerHTML = `
-                <div class="results">
-                    <h3>Flow Execution Results:</h3>
-                    <pre>${JSON.stringify(result, null, 2)}</pre>
-                </div>
-            `;
+
+        // Main initialization
+        async function initialize() {
+            try {
+                // Step 1: Get session ID
+                const sessionId = await getSessionId();
+                
+                // Step 2: Initialize Lightning Out
+                initializeLightningOut(sessionId);
+                
+            } catch (error) {
+                updateStatus(`❌ Initialization failed: ${error.message}`, 'error');
+                console.error('Initialization error:', error);
+                
+                // Show instructions for fixing the issue
+                if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                    updateStatus(`❌ Authentication Error: Deploy the ExternalFlowAuthenticator class and create a Site to expose it publicly.`, 'error');
+                } else if (error.message.includes('CORS')) {
+                    updateStatus(`❌ CORS Error: Create a Salesforce Site to expose the REST endpoint publicly.`, 'error');
+                }
+            }
         }
-        
-        // Handle errors
+
+        // Start everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Starting Lightning Out Flow Launcher');
+            initialize();
+        });
+
+        // Global error handling
         window.addEventListener('error', function(e) {
             console.error('Global error:', e.error);
-            updateStatus(`❌ Unexpected Error: ${e.message}`, 'error');
+            updateStatus(`❌ Error: ${e.message}`, 'error');
         });
-        
-        console.log('🚀 Flow Launcher Ready');
     </script>
 </body>
 </html> 
