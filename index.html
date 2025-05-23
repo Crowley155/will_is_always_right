@@ -57,12 +57,9 @@
     </div>
     
     <script>
-        // Integration User Configuration
-        const INTEGRATION_CONFIG = {
-            clientId: '3MVG9fdJGowvdgN3cVEc2VfzZPUcpVNgO4rmsXGujU25k4uFLOtXlPUm0ETdo_vaUWw_GK7U6DsTtPCcZk_0X',
-            username: 'flow@clearcaptions.com.willdev',
-            password: 'flow@clearcaptions.com.willdevJnNgqtNDPfWKvsw9E6UG32dbO', // password + security token
-            tokenUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/oauth2/token',
+        // Configuration
+        const CONFIG = {
+            authEndpoint: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/services/apexrest/ExternalFlowAuth',
             instanceUrl: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com'
         };
         
@@ -77,38 +74,30 @@
             console.log(`[FLOW] ${message}`);
         }
         
-        // Authenticate with integration user
-        async function authenticateIntegrationUser() {
+        // Authenticate using proxy endpoint
+        async function authenticateViaProxy() {
             try {
-                updateFlowStatus('Authenticating with integration user...', 'info');
+                updateFlowStatus('Authenticating via Salesforce proxy...', 'info');
                 
-                const tokenParams = new URLSearchParams({
-                    grant_type: 'password',
-                    client_id: INTEGRATION_CONFIG.clientId,
-                    username: INTEGRATION_CONFIG.username,
-                    password: INTEGRATION_CONFIG.password
-                });
-                
-                const response = await fetch(INTEGRATION_CONFIG.tokenUrl, {
+                const response = await fetch(CONFIG.authEndpoint, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: tokenParams
+                        'Content-Type': 'application/json',
+                    }
                 });
                 
                 const data = await response.json();
                 console.log('Auth Response:', data);
                 
-                if (data.access_token) {
-                    accessToken = data.access_token;
-                    sessionId = data.access_token;
+                if (data.success && data.accessToken) {
+                    accessToken = data.accessToken;
+                    sessionId = data.accessToken;
                     
                     updateFlowStatus('✅ Authentication successful!', 'success');
                     await initializeLightningOut();
                     
                 } else {
-                    throw new Error(data.error_description || data.error || 'Authentication failed');
+                    throw new Error(data.message || 'Authentication failed');
                 }
                 
             } catch (error) {
@@ -124,7 +113,7 @@
                 
                 // Load Lightning Out script
                 const lightningScript = document.createElement('script');
-                lightningScript.src = `${INTEGRATION_CONFIG.instanceUrl}/lightning/lightning.out.js`;
+                lightningScript.src = `${CONFIG.instanceUrl}/lightning/lightning.out.js`;
                 
                 lightningScript.onload = function() {
                     updateFlowStatus('Lightning Out loaded, creating flow...', 'info');
@@ -132,7 +121,7 @@
                     // Initialize Lightning Out with session
                     $Lightning.use("c:flowLauncherApp", function() {
                         createFlowComponent();
-                    }, INTEGRATION_CONFIG.instanceUrl, sessionId);
+                    }, CONFIG.instanceUrl, sessionId);
                 };
                 
                 lightningScript.onerror = function() {
@@ -181,7 +170,7 @@
         // Start everything when page loads
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 Starting Flow Launcher');
-            authenticateIntegrationUser();
+            authenticateViaProxy();
         });
         
         // Error handling
@@ -191,5 +180,4 @@
         });
     </script>
 </body>
-</html> 
 </html> 
