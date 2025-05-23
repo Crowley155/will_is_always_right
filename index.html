@@ -9,20 +9,20 @@
     <div id="flowContainer" style="width: 100%; min-height: 400px;"></div>
     
     <!-- Include Lightning Out from your Salesforce org -->
-    <script src="https://YOUR_SALESFORCE_DOMAIN.my.salesforce.com/lightning/lightning.out.js"></script>
+    <script src="https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com/lightning/lightning.out.js"></script>
     
     <script>
         // Lightning Out Configuration
         const SALESFORCE_CONFIG = {
-            orgDomain: 'YOUR_SALESFORCE_DOMAIN.my.salesforce.com', // Replace with your domain
+            orgDomain: 'https://clearcaptions123--willdev.sandbox.my.salesforce-setup.com',
             appName: 'c:flowLauncherApp',
             containerId: 'flowContainer',
-            token: 'YOUR_LIGHTNING_OUT_TOKEN' // Get this from Setup > Session Settings
+            token: 'YOUR_LIGHTNING_OUT_TOKEN' // Get this from Setup > Session Settings > Lightning Out Security
         };
         
         // Flow configuration
         const FLOW_CONFIG = {
-            flowName: 'YOUR_FLOW_API_NAME', // Replace with your flow's API name
+            flowName: 'Sales_Order_Acquisition_Guided_Workflow',
             autoStart: true,
             inputVariables: [
                 // Example input variables - customize as needed
@@ -180,4 +180,4 @@
         });
     </script>
 </body>
-</html>
+</html> 
